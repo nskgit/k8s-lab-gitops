@@ -1,0 +1,103 @@
+# ============================================================================
+# hello-api — first service delivered by Pipeline 2 (k8s-lab-apps repo).
+#
+# STAGED FOR P9-lite STAGE 2 — no Application references this folder yet,
+# so committing it deploys NOTHING. It goes live when:
+#   1. CI pushes the first image to OCIR (stage 2),
+#   2. the image: placeholder below is filled with the real OCIR path,
+#   3. an Application for workloads/hello-api is added to applications/.
+#
+# Probes — all three, each with a DIFFERENT job:
+#   startupProbe   gates the other two until the app has booted; protects
+#                  slow starts from liveness kills (30 × 1s budget here —
+#                  overkill for FastAPI, right habit for real apps)
+#   readinessProbe "may traffic come?" — fail = pulled from endpoints,
+#                  pod keeps running (used during rollouts + overload)
+#   livenessProbe  "is the process wedged?" — fail = container RESTARTED.
+#                  Points at dependency-free /healthz on purpose: a
+#                  liveness probe that checks a database converts every
+#                  DB outage into a cluster-wide restart storm.
+#
+# Metrics: /metrics on the app port; PodMonitor below makes Prometheus
+# scrape every pod (kps convention: release: kps label, named port).
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-api
+  namespace: demo
+  labels:
+    app: hello-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-api
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      containers:
+        - name: hello-api
+          # TODO(stage 2): <region>.ocir.io/<tenancy-ns>/hello-api:<git-sha>
+          image: OCIR_IMAGE_PLACEHOLDER
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: PYTHONDONTWRITEBYTECODE   # read-only rootfs below
+              value: "1"
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 1
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001              # matches the Dockerfile USER
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-api
+  namespace: demo
+  labels:
+    app: hello-api
+spec:
+  selector:
+    app: hello-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: hello-api
+  namespace: demo
+  labels:
+    release: kps            # matches the stack's monitor-selection convention
+spec:
+  selector:
+    matchLabels:
+      app: hello-api
+  podMetricsEndpoints:
+    - port: http            # app serves /metrics on its main port
+      path: /metrics
+      interval: 30s

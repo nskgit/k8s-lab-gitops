@@ -13,7 +13,7 @@
 #
 # In demo ns (istio-injected) so the sidecar contrast is visible (2/2).
 #
-#   kubectl apply -f gitops/workloads/demo/podinfo.yaml
+#   kubectl apply -f workloads/demo/podinfo.yaml
 # ============================================================================
 apiVersion: apps/v1
 kind: Deployment

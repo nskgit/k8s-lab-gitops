@@ -14,7 +14,7 @@
 # gateway behind Grafana's own login. Production = internal gateway on a
 # private LB + SSO (see the multi-gateway topology discussion).
 #
-#   kubectl apply -f gitops/platform/observability/grafana-route.yaml
+#   kubectl apply -f platform/observability/grafana-route.yaml
 # ============================================================================
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

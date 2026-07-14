@@ -9,7 +9,7 @@ platform** (no human helm/kubectl).
 ```bash
 helm repo add argo https://argoproj.github.io/argo-helm
 helm upgrade --install argocd argo/argo-cd --version <pin> -n argocd \
-  --create-namespace -f gitops/bootstrap/argocd-values.yaml \
+  --create-namespace -f bootstrap/argocd-values.yaml \
   --wait --disable-openapi-validation
 ```
 
@@ -30,18 +30,18 @@ read-only enforced by GitHub). Private key lives in
 ```bash
 # 1. generate the keypair
 ssh-keygen -t ed25519 -N "" -C argocd-deploy \
-  -f ~/.k8s-lab-secrets/argocd/argocd-repo-deploy.key
+  -f ~/.k8s-lab-secrets/argocd/argocd-gitops-deploy.key
 
 # 2. add the .pub to GitHub → repo Settings → Deploy keys
 #    (title argocd-readonly; DO NOT allow write access)
 
 # 3. create the Argo repository Secret from the private key
-kubectl -n argocd create secret generic repo-k8s-lab-infra \
+kubectl -n argocd create secret generic repo-k8s-lab-gitops \
   --from-literal=type=git \
-  --from-literal=url=git@github.com:nskgit/k8s-lab-infra.git \
-  --from-file=sshPrivateKey=$HOME/.k8s-lab-secrets/argocd/argocd-repo-deploy.key \
+  --from-literal=url=git@github.com:nskgit/k8s-lab-gitops.git \
+  --from-file=sshPrivateKey=$HOME/.k8s-lab-secrets/argocd/argocd-gitops-deploy.key \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n argocd label secret repo-k8s-lab-infra \
+kubectl -n argocd label secret repo-k8s-lab-gitops \
   argocd.argoproj.io/secret-type=repository --overwrite
 ```
 
@@ -89,15 +89,15 @@ can't schedule on tainted nodes).
 
 ## Applications
 
-`gitops/applications/*.yaml` — one Argo Application per component;
-`gitops/bootstrap/root-app.yaml` (app-of-apps) watches that directory, so
+`applications/*.yaml` — one Argo Application per component;
+`bootstrap/root-app.yaml` (app-of-apps) watches that directory, so
 the whole platform is one declarative tree. Sync-waves: namespaces -1 →
 istio-base 0 → istiod 1 → gateway charts 2 → Gateway objects 3.
 
 **Deliberately NOT Argo-managed** (the complete list):
 - **ccm-csi + CNI** — Ansible-owned (D3 rebuild deadlock, see above).
 - **oci-bv StorageClass** — applied by the `oci-csi` Ansible role from
-  `gitops/platform/storage/` (part of the CSI layer, same D3 logic).
+  the INFRA repo (`ansible/roles/oci-csi/files/`) — CSI layer, D3 logic.
 - **Kiali** — Helm-managed exception: its chart bakes a random
   `signing_key` into the ConfigMap per render (non-deterministic →
   GitOps-incompatible, LEARNING-LOG §11).

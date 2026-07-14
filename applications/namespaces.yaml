@@ -23,9 +23,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:nskgit/k8s-lab-infra.git
+    repoURL: git@github.com:nskgit/k8s-lab-gitops.git
     targetRevision: main
-    path: gitops/platform/namespaces
+    path: platform/namespaces
   destination:
     server: https://kubernetes.default.svc
     namespace: default          # Namespaces are cluster-scoped; this is unused

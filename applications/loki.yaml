@@ -26,8 +26,8 @@ spec:
       helm:
         releaseName: loki       # explicit (matches installed release; §11 habit)
         valueFiles:
-          - $values/gitops/platform/observability/loki-values.yaml
-    - repoURL: git@github.com:nskgit/k8s-lab-infra.git
+          - $values/platform/observability/loki-values.yaml
+    - repoURL: git@github.com:nskgit/k8s-lab-gitops.git
       targetRevision: main
       ref: values
   destination:

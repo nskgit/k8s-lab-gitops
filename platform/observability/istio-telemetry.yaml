@@ -14,7 +14,7 @@
 # picks these up from istio-system without label gymnastics. All scrapes ride
 # pod-network VXLAN — zero NSG changes.
 #
-#   kubectl apply -f gitops/platform/observability/istio-telemetry.yaml
+#   kubectl apply -f platform/observability/istio-telemetry.yaml
 # ============================================================================
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

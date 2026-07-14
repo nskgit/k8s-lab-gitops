@@ -2,7 +2,7 @@
 # lab-gateway — the cluster's single north-south entry point (Gateway API).
 #
 # Applied manually in Phase 6; becomes an Argo-managed resource at Phase 8.
-#   kubectl apply -f gitops/platform/istio/gateway.yaml
+#   kubectl apply -f platform/istio/gateway.yaml
 #
 # The moment this lands, istiod pushes listener config over xDS to the
 # istio-ingressgateway Envoy: :80/:443 open in-pod (no restart), the OCI LB

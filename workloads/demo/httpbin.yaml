@@ -12,7 +12,7 @@
 #   /status/<code>        return any HTTP status (test error handling)
 #   /delay/<sec>          slow response (test timeouts + alerts later)
 #
-#   kubectl apply -f gitops/workloads/demo/httpbin.yaml
+#   kubectl apply -f workloads/demo/httpbin.yaml
 # ============================================================================
 apiVersion: apps/v1
 kind: Deployment

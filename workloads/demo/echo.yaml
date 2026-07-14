@@ -17,9 +17,9 @@
 #         the LB never sees plaintext, can't inject headers; kube-proxy
 #         SNAT masks the source). The documented TCP-443 trade-off.
 #
-#   kubectl apply -f gitops/workloads/demo/echo.yaml
+#   kubectl apply -f workloads/demo/echo.yaml
 # ============================================================================
-# NOTE: the demo Namespace moved to gitops/platform/namespaces/ (2026-07-15
+# NOTE: the demo Namespace moved to platform/namespaces/ (2026-07-15
 # review) — a workload app must never own its namespace: pruning the app
 # would cascade-delete the namespace and everything in it (incl. podinfo,
 # which belongs to a different Application).

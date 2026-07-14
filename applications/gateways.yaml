@@ -24,9 +24,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:nskgit/k8s-lab-infra.git
+    repoURL: git@github.com:nskgit/k8s-lab-gitops.git
     targetRevision: main
-    path: gitops/platform/istio
+    path: platform/istio
     directory:
       include: '{gateway.yaml,internal-gateway.yaml}'   # ONLY the Gateway objects, not values files
   destination:

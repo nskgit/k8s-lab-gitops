@@ -13,7 +13,7 @@
 # go-httpbin tag-404 lesson we pin what provably exists; production would
 # pin exact version + digest.
 #
-#   kubectl apply -f gitops/workloads/blog/wordpress.yaml
+#   kubectl apply -f workloads/blog/wordpress.yaml
 # ============================================================================
 apiVersion: apps/v1
 kind: Deployment

@@ -23,9 +23,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:nskgit/k8s-lab-infra.git
+    repoURL: git@github.com:nskgit/k8s-lab-gitops.git
     targetRevision: main
-    path: gitops/platform/observability
+    path: platform/observability
     directory:
       include: '{istio-telemetry.yaml,grafana-route.yaml,loki-grafana-datasource.yaml}'
   destination:

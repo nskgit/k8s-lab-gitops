@@ -7,7 +7,7 @@
 # the DB credentials). Production = internal gateway / VPN only — same
 # reasoning as the Grafana route.
 #
-#   kubectl apply -f gitops/workloads/blog/adminer.yaml
+#   kubectl apply -f workloads/blog/adminer.yaml
 # ============================================================================
 apiVersion: apps/v1
 kind: Deployment

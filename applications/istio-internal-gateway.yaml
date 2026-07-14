@@ -21,8 +21,8 @@ spec:
       helm:
         releaseName: istio-internal-gateway
         valueFiles:
-          - $values/gitops/platform/istio/istio-internal-gateway-values.yaml
-    - repoURL: git@github.com:nskgit/k8s-lab-infra.git
+          - $values/platform/istio/istio-internal-gateway-values.yaml
+    - repoURL: git@github.com:nskgit/k8s-lab-gitops.git
       targetRevision: main
       ref: values
   destination:

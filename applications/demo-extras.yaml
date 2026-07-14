@@ -22,9 +22,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:nskgit/k8s-lab-infra.git
+    repoURL: git@github.com:nskgit/k8s-lab-gitops.git
     targetRevision: main
-    path: gitops/workloads/demo
+    path: workloads/demo
     directory:
       include: '{echo.yaml,echo-v2-canary.yaml,httpbin.yaml,intranet.yaml}'
   destination:

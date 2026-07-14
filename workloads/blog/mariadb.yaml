@@ -10,7 +10,7 @@
 # never in git). Database + app user are created by the official image's
 # first-boot init from MARIADB_* env.
 #
-#   kubectl apply -f gitops/workloads/blog/mariadb.yaml
+#   kubectl apply -f workloads/blog/mariadb.yaml
 # ============================================================================
 apiVersion: v1
 kind: Service

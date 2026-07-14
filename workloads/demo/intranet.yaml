@@ -9,7 +9,7 @@
 #   kubectl port-forward svc/istio-internal-gateway 8081:80 →
 #   curl -H "Host: intranet.satheshkumarnapoleon.site" localhost:8081 → 200
 #
-#   kubectl apply -f gitops/workloads/demo/intranet.yaml
+#   kubectl apply -f workloads/demo/intranet.yaml
 # ============================================================================
 apiVersion: apps/v1
 kind: Deployment

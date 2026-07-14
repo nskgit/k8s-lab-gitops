@@ -6,7 +6,7 @@
 # them live — no Grafana restart, no helm upgrade. This is the same
 # ConfigMap-provisioning pattern as the 27 dashboards.
 #
-#   kubectl apply -f gitops/platform/observability/loki-grafana-datasource.yaml
+#   kubectl apply -f platform/observability/loki-grafana-datasource.yaml
 # then: Grafana → Explore → pick "Loki" → query e.g. {namespace="apps"}
 # ============================================================================
 apiVersion: v1

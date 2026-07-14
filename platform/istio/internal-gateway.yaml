@@ -4,7 +4,7 @@
 # EXPOSURE, not by domain — admin/intranet routes attach here and are
 # unreachable from the internet because no LB forwards to NodePort 31080.
 #
-#   kubectl apply -f gitops/platform/istio/internal-gateway.yaml
+#   kubectl apply -f platform/istio/internal-gateway.yaml
 # ============================================================================
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway

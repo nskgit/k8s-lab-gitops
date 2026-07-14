@@ -20,8 +20,8 @@ spec:
       helm:
         releaseName: istio-ingressgateway
         valueFiles:
-          - $values/gitops/platform/istio/istio-gateway-values.yaml
-    - repoURL: git@github.com:nskgit/k8s-lab-infra.git
+          - $values/platform/istio/istio-gateway-values.yaml
+    - repoURL: git@github.com:nskgit/k8s-lab-gitops.git
       targetRevision: main
       ref: values
   destination:

@@ -94,7 +94,7 @@ spec:
     - backendRefs:
         - name: echo        # v1 — 90%
           port: 80
-          weight: 90
+          weight: 50
         - name: echo-v2     # canary — 10%
           port: 80
-          weight: 10
+          weight: 50

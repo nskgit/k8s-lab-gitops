@@ -44,7 +44,7 @@ spec:
         - name: hello-api
           # Tag = the exact commit that built it (green run #6, Pipeline 2).
           # Deploying a new version = changing THIS line via git.
-          image: iad.ocir.io/idqz7bbbe34a/hello-api:fb02ff819ff5e4a23fe78becae25fc0741fafc9d
+          image: iad.ocir.io/idqz7bbbe34a/hello-api:bb8ac368c8d266b0a46b6fb55434ef2df31f00ff
           ports:
             - name: http
               containerPort: 8000

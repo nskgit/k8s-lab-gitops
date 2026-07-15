@@ -1,0 +1,30 @@
+# ============================================================================
+# Argo Application — hello-api: the FIRST service delivered end-to-end by
+# Pipeline 2 (k8s-lab-apps CI → OCIR → this repo → Argo).
+#
+# Unlike the 8.5 adoptions, this is a FRESH deploy (nothing live to
+# clobber), so fleet policy applies from birth: automated + selfHeal +
+# prune. Deploy = commit here; rollback = revert.
+# ============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-api
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:nskgit/k8s-lab-gitops.git
+    targetRevision: main
+    path: workloads/hello-api
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

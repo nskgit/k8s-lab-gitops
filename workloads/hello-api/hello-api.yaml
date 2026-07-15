@@ -38,10 +38,13 @@ spec:
       labels:
         app: hello-api
     spec:
+      imagePullSecrets:
+        - name: ocir-pull        # in-cluster only, never in git (like blog-db-credentials)
       containers:
         - name: hello-api
-          # TODO(stage 2): <region>.ocir.io/<tenancy-ns>/hello-api:<git-sha>
-          image: OCIR_IMAGE_PLACEHOLDER
+          # Tag = the exact commit that built it (green run #6, Pipeline 2).
+          # Deploying a new version = changing THIS line via git.
+          image: iad.ocir.io/idqz7bbbe34a/hello-api:fb02ff819ff5e4a23fe78becae25fc0741fafc9d
           ports:
             - name: http
               containerPort: 8000
@@ -101,3 +104,20 @@ spec:
     - port: http            # app serves /metrics on its main port
       path: /metrics
       interval: 30s
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hello-api
+  namespace: demo
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: istio-system
+      sectionName: https-sathesh
+  hostnames:
+    - hello-api.satheshkumarnapoleon.site
+  rules:
+    - backendRefs:
+        - name: hello-api
+          port: 80

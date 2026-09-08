@@ -1,0 +1,1353 @@
+# ============================================================================
+# Grafana dashboard ConfigMap — Fleet-Wide SLO rollup (all meshed services in
+# the demo namespace: echo, echo-v2, hello-api, httpbin, intranet, podinfo).
+#
+# Sidecar-provisioned, same convention as slo-dashboard-per-service.yaml —
+# see that file's header for the full metric/label verification notes
+# (istio_requests_total / istio_request_duration_milliseconds_bucket,
+# reporter="destination" required, le="500.0" bucket == 500ms exactly).
+#
+# Adds a per-service breakdown table (SLI + error-budget-remaining side by
+# side) so the fleet rollup and the per-service drill-down aren't the only
+# way to compare services against each other.
+#
+# Same lab caveats apply: httpbin/intranet rows are absent from the
+# breakdown table until they receive traffic (Prometheus has no series for
+# them yet); 5d retention caps how far back $budget_window can honestly see.
+#
+#   kubectl apply -f platform/observability/slo-dashboard-fleet.yaml
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slo-dashboard-fleet
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"     # ← the sidecar's trigger label
+data:
+  slo-fleet-overview.json: |
+    {
+      "id": null,
+      "uid": "slo-fleet-overview",
+      "title": "SLO \u2014 Fleet Overview (all services)",
+      "tags": [
+        "slo",
+        "istio",
+        "sre"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "DS_PROMETHEUS",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 0,
+            "refresh": 1,
+            "regex": "",
+            "label": "Prometheus",
+            "current": {}
+          },
+          {
+            "name": "sli_window",
+            "type": "custom",
+            "label": "SLI rolling window",
+            "query": "5m,30m,1h,6h,24h",
+            "options": [
+              {
+                "text": "5m",
+                "value": "5m",
+                "selected": false
+              },
+              {
+                "text": "30m",
+                "value": "30m",
+                "selected": true
+              },
+              {
+                "text": "1h",
+                "value": "1h",
+                "selected": false
+              },
+              {
+                "text": "6h",
+                "value": "6h",
+                "selected": false
+              },
+              {
+                "text": "24h",
+                "value": "24h",
+                "selected": false
+              }
+            ],
+            "current": {
+              "text": "30m",
+              "value": "30m"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false
+          },
+          {
+            "name": "budget_window",
+            "type": "custom",
+            "label": "Error-budget compliance window",
+            "query": "1d,3d,7d,30d",
+            "options": [
+              {
+                "text": "1d",
+                "value": "1d",
+                "selected": false
+              },
+              {
+                "text": "3d",
+                "value": "3d",
+                "selected": false
+              },
+              {
+                "text": "7d",
+                "value": "7d",
+                "selected": false
+              },
+              {
+                "text": "30d",
+                "value": "30d",
+                "selected": true
+              }
+            ],
+            "current": {
+              "text": "30d",
+              "value": "30d"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "Read me first \u2014 SLA/SLO definitions & data caveats",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 6
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "### SLA vs SLO\n- **Business SLA (customer-facing):** 99% of requests complete within 500ms.\n- **Internal latency SLO (tracked/alerted here):** 99.95% within 500ms \u2014 a stricter internal safety margin above the SLA so we get paged before the SLA itself is at risk.\n- **Availability SLO:** 99.95% non-5xx responses.\n\n### Data caveats (read before trusting the numbers)\n- Source: `istio_requests_total` / `istio_request_duration_milliseconds_bucket`, filtered to `reporter=\"destination\"` (avoids double-counting \u2014 both the client and server Envoy sidecars report every call).\n- The `le=\"500.0\"` histogram bucket sits **exactly** at the 500ms SLO threshold (confirmed live against Prometheus) \u2014 the latency SLI below is computed directly from it, no approximation.\n- `httpbin` and `intranet` are meshed and selectable but have **zero live traffic** right now, so their traffic-derived panels will show \"No data\" until something calls them.\n- Prometheus retention in this lab is **5 days** (`kps-values.yaml`). A 30d error-budget/compliance window will silently under-report until retention is extended or a Thanos/remote-write path exists \u2014 drop `$budget_window` to 3d/7d for a number retention can actually back."
+          }
+        },
+        {
+          "id": 2,
+          "type": "gauge",
+          "title": "Availability SLI vs 99.95% SLO (Fleet-Wide)",
+          "gridPos": {
+            "x": 0,
+            "y": 6,
+            "w": 8,
+            "h": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$sli_window]))\n/\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.995
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.9995
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "gauge",
+          "title": "Latency SLI (<500ms) \u2014 SLA 99% / SLO 99.95% (Fleet-Wide)",
+          "gridPos": {
+            "x": 8,
+            "y": 6,
+            "w": 8,
+            "h": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))\n/\nsum(rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.99
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.9995
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Request Rate (RPS)",
+          "gridPos": {
+            "x": 16,
+            "y": 6,
+            "w": 4,
+            "h": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "5xx Error Rate (RPS)",
+          "gridPos": {
+            "x": 20,
+            "y": 6,
+            "w": 4,
+            "h": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code=~\"5..\"}[$sli_window]))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.01
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Latency Percentiles (Fleet-Wide) \u2014 red line = 500ms SLO target",
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 24,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval])))",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "p50"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.9, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval])))",
+              "refId": "B",
+              "format": "time_series",
+              "legendFormat": "p90"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval])))",
+              "refId": "C",
+              "format": "time_series",
+              "legendFormat": "p95"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval])))",
+              "refId": "D",
+              "format": "time_series",
+              "legendFormat": "p99"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.999, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval])))",
+              "refId": "E",
+              "format": "time_series",
+              "legendFormat": "p99.9"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 500
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Request Rate by Service",
+          "gridPos": {
+            "x": 0,
+            "y": 21,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$__rate_interval]))",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "{{destination_service_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "5xx Error Rate by Service",
+          "gridPos": {
+            "x": 12,
+            "y": 21,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code=~\"5..\"}[$__rate_interval]))",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "{{destination_service_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "normal"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Error Budget Remaining \u2014 Availability",
+          "gridPos": {
+            "x": 0,
+            "y": 29,
+            "w": 6,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "1 - ((1 - (\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$budget_window]))\n/\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Error Budget Remaining \u2014 Latency",
+          "gridPos": {
+            "x": 6,
+            "y": 29,
+            "w": 6,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "1 - ((1 - (\nsum(rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n/\nsum(rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Saturation: Replicas Desired vs Available (added \u2014 4th golden signal; also the only signal that's live for httpbin/intranet before they see traffic)",
+          "gridPos": {
+            "x": 12,
+            "y": 29,
+            "w": 6,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"demo\"})",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "Desired"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(kube_deployment_status_replicas_available{namespace=\"demo\"})",
+              "refId": "B",
+              "format": "time_series",
+              "legendFormat": "Available"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "none"
+                }
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "Pod Restarts (1h)",
+          "gridPos": {
+            "x": 18,
+            "y": 29,
+            "w": 6,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"demo\", pod=~\"(echo|echo-v2|hello-api|httpbin|intranet|podinfo)-.*\"}[1h]))",
+              "refId": "A",
+              "format": "time_series"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Burn Rate \u2014 Availability SLO (multi-window: 1h & 6h; lines at 6/14.4 = classic slow/fast-burn alert levels for a 30d SLO)",
+          "gridPos": {
+            "x": 0,
+            "y": 35,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(1 - (\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[1h]))\n/\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[1h]))\n)) / (1 - 0.9995)",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "1h burn rate"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(1 - (\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[6h]))\n/\nsum(rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[6h]))\n)) / (1 - 0.9995)",
+              "refId": "B",
+              "format": "time_series",
+              "legendFormat": "6h burn rate"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "orange",
+                    "value": 6
+                  },
+                  {
+                    "color": "red",
+                    "value": 14.4
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Burn Rate \u2014 Latency SLO (multi-window: 1h & 6h; lines at 6/14.4 = classic slow/fast-burn alert levels for a 30d SLO)",
+          "gridPos": {
+            "x": 12,
+            "y": 35,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(1 - (\nsum(rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[1h]))\n/\nsum(rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[1h]))\n)) / (1 - 0.9995)",
+              "refId": "A",
+              "format": "time_series",
+              "legendFormat": "1h burn rate"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(1 - (\nsum(rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[6h]))\n/\nsum(rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[6h]))\n)) / (1 - 0.9995)",
+              "refId": "B",
+              "format": "time_series",
+              "legendFormat": "6h burn rate"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "orange",
+                    "value": 6
+                  },
+                  {
+                    "color": "red",
+                    "value": 14.4
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 15,
+          "type": "table",
+          "title": "Per-Service Breakdown \u2014 SLI & Error Budget at a glance (rows appear only for services with live traffic \u2014 see caveats above)",
+          "gridPos": {
+            "x": 0,
+            "y": 43,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$sli_window]))\n/\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$budget_window]))\n/\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "refId": "B",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))\n/\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "C",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n/\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "refId": "D",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "refId": "E",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "joinByField",
+              "options": {
+                "byField": "destination_service_name",
+                "mode": "outer"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "destination_service_name": "Service",
+                  "Value #A": "Availability SLI",
+                  "Value #B": "Availability Budget Remaining",
+                  "Value #C": "Latency SLI (<500ms)",
+                  "Value #D": "Latency Budget Remaining",
+                  "Value #E": "RPS"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Availability SLI"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 4
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.995
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.9995
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Latency SLI (<500ms)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 4
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0.99
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.9995
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Availability Budget Remaining"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Latency Budget Remaining"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 0
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "RPS"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "reqps"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ],
+      "editable": true,
+      "graphTooltip": 1
+    }

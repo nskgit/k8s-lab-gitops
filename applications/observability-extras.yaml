@@ -3,15 +3,26 @@
 # that live OUTSIDE the kube-prometheus-stack chart).
 #
 # Closes a GitOps coverage gap. Members (each carries its own namespace):
-#   istio-telemetry.yaml          ServiceMonitor istiod + PodMonitor envoy
-#   grafana-route.yaml            HTTPRoute grafana.<domain> → grafana svc
-#   loki-grafana-datasource.yaml  ConfigMap (grafana_datasource=1 sidecar)
+#   istio-telemetry.yaml            ServiceMonitor istiod + PodMonitor envoy
+#   grafana-route.yaml              HTTPRoute grafana.<domain> → grafana svc
+#   loki-grafana-datasource.yaml    ConfigMap (grafana_datasource=1 sidecar)
+#   slo-dashboard-per-service.yaml  ConfigMap (grafana_dashboard=1 sidecar) —
+#                                   $service-parameterized SLO dashboard
+#   slo-dashboard-fleet.yaml        ConfigMap (grafana_dashboard=1 sidecar) —
+#                                   fleet-wide SLO rollup + per-service table
 #
 # Values files in the same folder are NOT included (they belong to the
 # chart-based Applications via $values refs).
 #
 # Adopted 2026-07-15: first sync verified annotations-only, resources
 # 'configured' (zero restarts); automated+selfHeal+prune since same day.
+#
+# 2026-09-09: added the two SLO dashboard ConfigMaps above. NOTE — this
+# Application scopes sync to an explicit `directory.include` glob (not the
+# whole folder), so a new file here does nothing until it's added to that
+# glob too. Metric names/labels/bucket boundaries were confirmed live
+# against this cluster's Prometheus before writing the dashboard PromQL —
+# see the two ConfigMap files' own headers for what was verified.
 # ============================================================================
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -27,7 +38,7 @@ spec:
     targetRevision: main
     path: platform/observability
     directory:
-      include: '{istio-telemetry.yaml,grafana-route.yaml,loki-grafana-datasource.yaml}'
+      include: '{istio-telemetry.yaml,grafana-route.yaml,loki-grafana-datasource.yaml,slo-dashboard-per-service.yaml,slo-dashboard-fleet.yaml}'
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

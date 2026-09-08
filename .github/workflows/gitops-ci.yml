@@ -1,0 +1,133 @@
+# ============================================================================
+# gitops CI — static validation for the GitOps repo (no cluster access, no
+# credentials). Argo CD is the only thing that ever applies these manifests;
+# this pipeline just proves they're well-formed BEFORE Argo tries to sync
+# them, so a bad PR fails here instead of surfacing as an OutOfSync/Degraded
+# app days later.
+#
+# Three independent checks, one per job:
+#   yamllint    — every YAML file in the repo: syntax, duplicate keys,
+#                 trailing whitespace. Line-length is disabled on purpose —
+#                 these are real config files with long repoURLs/image refs.
+#   kubeconform — schema-validates the PLAIN Kubernetes manifests (Argo
+#                 Application CRs, Gateway API objects, Prometheus-operator
+#                 objects, and workloads/) against the upstream 1.33 schema
+#                 plus the datreeio/CRDs-catalog for the CRDs we actually
+#                 use. Helm *-values.yaml files are NOT Kubernetes objects on
+#                 their own — they're excluded, not validated as manifests.
+#   gitleaks    — secret scanning, same pattern as the infra repo's
+#                 infra-ci.yml: full-history fetch, skipped on
+#                 dependabot-triggered runs (restricted GITHUB_TOKEN 403s the
+#                 PR-commit API; the push-run after merge still scans it).
+#
+# Runner: ubuntu-latest — nothing here is architecture-specific.
+# ============================================================================
+name: gitops CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "applications/**"
+      - "bootstrap/**"
+      - "platform/**"
+      - "workloads/**"
+      - ".yamllint.yml"
+      - ".github/workflows/gitops-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "applications/**"
+      - "bootstrap/**"
+      - "platform/**"
+      - "workloads/**"
+      - ".yamllint.yml"
+      - ".github/workflows/gitops-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  KUBECONFORM_VERSION: "0.8.0"
+  KUBERNETES_VERSION: "1.33.0"
+
+jobs:
+
+  yamllint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned yamllint
+        run: pip install yamllint==1.37.1
+
+      - name: Lint (repo-wide, .yamllint.yml config)
+        run: yamllint .
+
+  kubeconform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kubeconform (pinned release binary)
+        run: |
+          curl -fsSL -o kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf kubeconform.tar.gz kubeconform
+          install -m 0755 kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Validate plain Kubernetes manifests
+        run: |
+          # -schema-location default        -> bundled upstream schemas (kubernetesjsonschema.dev mirror),
+          #                                     covers every core/apps/batch/... GVK at $KUBERNETES_VERSION.
+          # -schema-location <catalog URL>   -> datreeio/CRDs-catalog, one JSON schema per CRD, keyed by
+          #                                     {Group}/{ResourceKind}_{ResourceAPIVersion}.json. Covers the
+          #                                     three CRD groups this repo actually uses: Argo CD
+          #                                     Applications (argoproj.io), Gateway API Gateway/HTTPRoute
+          #                                     (gateway.networking.k8s.io), and Prometheus-operator
+          #                                     ServiceMonitor/PodMonitor (monitoring.coreos.com). Verified
+          #                                     resolving (200) for all four kinds before wiring this in.
+          # -ignore-filename-pattern        -> Helm values files aren't standalone K8s objects; skip them
+          #                                     instead of failing on "missing apiVersion/kind".
+          kubeconform \
+            -strict \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-filename-pattern '.*-values\.yaml' \
+            -summary \
+            applications/ \
+            workloads/ \
+            platform/namespaces/ \
+            platform/istio/gateway.yaml \
+            platform/istio/internal-gateway.yaml \
+            platform/observability/grafana-route.yaml \
+            platform/observability/istio-telemetry.yaml \
+            platform/observability/loki-grafana-datasource.yaml
+
+  gitleaks:
+    # Dependabot-triggered runs get a restricted GITHUB_TOKEN (GitHub's
+    # defense against malicious dependency PRs) -> gitleaks' PR-commit API
+    # call 403s. Same tradeoff as infra-ci.yml: dependabot here only ever
+    # touches this workflow's own action pins, and every merge is still
+    # scanned by the push run, so skipping costs zero real coverage.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # gitleaks scans history, not just the tip
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

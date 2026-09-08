@@ -1,0 +1,36 @@
+# ============================================================================
+# yamllint config (Block: gitops-ci). Permissive on cosmetics that these
+# real config files trip constantly (long repoURLs/image refs, flow-style
+# resource maps like `{ cpu: 10m, memory: 32Mi }`, no `---` doc headers on
+# single-doc files) — strict on things that indicate an actual bug: syntax
+# errors, trailing whitespace, duplicate keys, bad indentation.
+# ============================================================================
+extends: default
+
+rules:
+  line-length: disable
+
+  # Most files here are single-document and never start with `---`; a few
+  # (echo.yaml, istio-telemetry.yaml, ...) use `---` only to separate
+  # multiple docs in one file, not to open the first one.
+  document-start: disable
+
+  # Helm-values-style inline maps are all over platform/*-values.yaml and
+  # the resources blocks in workloads/ — `{ cpu: 10m, memory: 32Mi }`.
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+
+  # Deliberate colon-alignment style used throughout (e.g.
+  # `requests: { ... }` / `limits:   { ... }` lined up on purpose in
+  # kps-values.yaml, echo.yaml, etc.) — extra space is readability, not
+  # a syntax problem.
+  colons:
+    max-spaces-after: -1
+
+  comments:
+    min-spaces-from-content: 1
+
+  truthy:
+    check-keys: false

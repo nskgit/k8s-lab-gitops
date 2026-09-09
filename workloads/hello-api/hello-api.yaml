@@ -29,7 +29,7 @@ metadata:
   labels:
     app: hello-api
 spec:
-  replicas: 2
+  # replicas: deliberately absent — the HPA at the end of this file owns it
   selector:
     matchLabels:
       app: hello-api
@@ -122,6 +122,11 @@ spec:
         - name: hello-api
           port: 80
 ---
+# The Deployment above has NO spec.replicas on purpose: this HPA owns the
+# count. With `replicas:` in git every scale-out is /spec/replicas drift that
+# Argo selfHeal reverts within seconds (K8s + Argo CD docs: HPA-managed →
+# drop replicas). The owning Application (hello-api) also ignores
+# /spec/replicas. minReplicas == the value removed (2) → no scale-down on merge.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

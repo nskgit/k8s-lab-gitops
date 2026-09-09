@@ -1,0 +1,35 @@
+# origin.<domain> — the full-path health probe target for the edge module's
+# API Gateway (terraform/modules/edge in k8s-lab-infra). Its /_edge/healthz
+# route proxies here; a 200 through this route proves gateway -> LB ->
+# Istio -> HTTPRoute all work, which is what should gate DNS failover.
+# Reuses the existing httpbin Service — no new workload.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: origin-healthz
+  namespace: demo
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: istio-system
+  hostnames:
+    - origin.satheshkumarnapoleon.site
+  rules:
+    # Exact, not PathPrefix: this is one fixed health-check path, not a
+    # subtree, and PathPrefix would also admit e.g. a trailing-slash probe
+    # request, get rewritten to "/status/200/", and 404 against
+    # go-httpbin's exact "/status/{code}" route — a false-unhealthy result
+    # for a path that was never actually broken.
+    - matches:
+        - path:
+            type: Exact
+            value: /_edge/healthz
+      backendRefs:
+        - name: httpbin
+          port: 80
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /status/200

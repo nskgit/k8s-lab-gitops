@@ -15,9 +15,14 @@ spec:
   hostnames:
     - origin.satheshkumarnapoleon.site
   rules:
+    # Exact, not PathPrefix: this is one fixed health-check path, not a
+    # subtree, and PathPrefix would also admit e.g. a trailing-slash probe
+    # request, get rewritten to "/status/200/", and 404 against
+    # go-httpbin's exact "/status/{code}" route — a false-unhealthy result
+    # for a path that was never actually broken.
     - matches:
         - path:
-            type: PathPrefix
+            type: Exact
             value: /_edge/healthz
       backendRefs:
         - name: httpbin
@@ -26,5 +31,5 @@ spec:
         - type: URLRewrite
           urlRewrite:
             path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /status/200
+              type: ReplaceFullPath
+              replaceFullPath: /status/200

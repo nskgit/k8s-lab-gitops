@@ -129,9 +129,21 @@ grafana:
   persistence:
     enabled: false
 
+  # Memory sized from measurement, not guesswork. Grafana 13.1 (unified
+  # storage + bleve search index on emptyDir) idles at a 210-235Mi working
+  # set and hit the old 256Mi ceiling on every incarnation
+  # (cgroup memory.events max=1309 in 7 min, 30 major faults/s, page cache
+  # squeezed to 7Mi). That thrash stalled /api/health past the 30s liveness
+  # timeout -> SIGTERM -> shutdown overran the 30s grace -> exit 137, plus one
+  # outright memcg OOM-kill (anon 258MB + file 97MB). Peak observed need was
+  # ~355Mi, so 512Mi leaves ~30% headroom. The chart sets GOMEMLIMIT from
+  # limits.memory, so the old value also pinned the Go GC at its soft limit.
+  # CPU untouched: usage never exceeded 33m of the 200m limit.
+  # Request tracks the real idle working set so the scheduler stops
+  # under-accounting this pod on the (tight) A1.Flex workers.
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits:   { cpu: 200m, memory: 256Mi }
+    requests: { cpu: 50m, memory: 256Mi }
+    limits:   { cpu: 200m, memory: 512Mi }
 
   # Sidecar auto-loads any ConfigMap in any namespace labeled:
   #   grafana_dashboard: "1"  (JSON dashboards)

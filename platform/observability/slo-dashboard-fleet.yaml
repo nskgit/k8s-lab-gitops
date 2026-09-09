@@ -1074,7 +1074,7 @@ data:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$sli_window]))\n/\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "expr": "sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$sli_window]))\n/\n(sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window])) > 0)",
               "refId": "A",
               "format": "table",
               "instant": true
@@ -1084,7 +1084,7 @@ data:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$budget_window]))\n/\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\", response_code!~\"5..\"}[$budget_window]))\n/\n(sum by (destination_service_name) (rate(istio_requests_total{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window])) > 0)\n)) / (1 - 0.9995))",
               "refId": "B",
               "format": "table",
               "instant": true
@@ -1094,7 +1094,7 @@ data:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))\n/\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))",
+              "expr": "sum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window]))\n/\n(sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$sli_window])) > 0)",
               "refId": "C",
               "format": "table",
               "instant": true
@@ -1104,7 +1104,7 @@ data:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n/\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n)) / (1 - 0.9995))",
+              "expr": "1 - ((1 - (\nsum by (destination_service_name) (rate(istio_request_duration_milliseconds_bucket{le=\"500.0\", destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window]))\n/\n(sum by (destination_service_name) (rate(istio_request_duration_milliseconds_count{destination_workload_namespace=\"demo\", reporter=\"destination\"}[$budget_window])) > 0)\n)) / (1 - 0.9995))",
               "refId": "D",
               "format": "table",
               "instant": true

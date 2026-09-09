@@ -28,3 +28,20 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      # Honour ignoreDifferences at SYNC time too (default: diff only). Argo
+      # pre-patches the manifest it applies with the LIVE /spec/replicas, so
+      # every image-tag deploy keeps the HPA's count. Without it the
+      # client-side 3-way merge against the stale last-applied `replicas:`
+      # would drop the field and Kubernetes defaults it to 1 (the "one-time
+      # degradation" the K8s HPA docs warn about).
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    # hello-api's Deployment is HPA-managed and git deliberately omits
+    # spec.replicas (see the HPA comment in workloads/hello-api/hello-api.yaml).
+    # Without this an HPA scale-out shows as /spec/replicas drift and
+    # selfHeal reverts it within seconds — HPA vs Argo tug-of-war. Also makes
+    # a future re-added `replicas:` harmless instead of a regression.
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
